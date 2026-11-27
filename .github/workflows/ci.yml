@@ -126,7 +126,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.4.0
 
       - name: Install dependencies
         run: uv pip install --system -r requirements-dev.txt
@@ -149,7 +149,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.4.0
 
       - name: Install dependencies
         run: uv pip install --system -r requirements-dev.txt
@@ -190,7 +190,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.4.0
 
       - name: Install dependencies
         run: uv pip install --system -r requirements-dev.txt
