@@ -10,7 +10,8 @@ Each folder in `agents/` is published at its own route:
 
 | Method and path | Description |
 | --- | --- |
-| `GET /` | Lists the agents and their routes. |
+| `GET /` | Lists the agents and their routes as JSON. |
+| `GET /docs` | Documentation page with the endpoints, skills and an example `curl` for each agent. Open it in the browser at `http://localhost:8000/docs`. |
 | `GET /<agent>/.well-known/agent-card.json` | AgentCard of the agent. |
 | `POST /<agent>` | A2A JSON-RPC endpoint (`SendMessage`, `GetTask`, `CancelTask`). |
 

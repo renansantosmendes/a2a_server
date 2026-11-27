@@ -46,6 +46,19 @@ def test_index_lists_every_agent_folder(client: TestClient) -> None:
     assert names == ["agent1", "agent2"]
 
 
+def test_docs_page_documents_every_agent(client: TestClient) -> None:
+    """Render an HTML page with the card, endpoint and example per agent."""
+    response = client.get("/docs")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    page = response.text
+    assert f"{BASE_URL}/agent1/.well-known/agent-card.json" in page
+    assert f"POST {BASE_URL}/agent2" in page
+    assert "SendMessage" in page
+    assert "A2A-Version: 1.0" in page
+
+
 def test_agent_card_is_served_under_the_agent_route(
     client: TestClient,
 ) -> None:
