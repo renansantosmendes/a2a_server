@@ -223,7 +223,7 @@ def test_execute_rejects_blank_message_without_calling_agent() -> None:
     queue = run_execute(agent, "   ")
 
     assert status_messages(queue) == [EMPTY_MESSAGE]
-    assert artifact_texts(queue) == []
+    assert not artifact_texts(queue)
     assert agent.received_messages == []
 
 
@@ -234,4 +234,4 @@ def test_execute_reports_failure_when_agent_raises() -> None:
     queue = run_execute(agent, "Pergunta")
 
     assert status_messages(queue) == [FAILURE_MESSAGE]
-    assert artifact_texts(queue) == []
+    assert not artifact_texts(queue)

@@ -80,6 +80,30 @@ Ask agent 2 a question (it calls agent 1 internally):
 
 The tests do not call the OpenAI API. They use a placeholder key.
 
+Lint, coverage and security checks, run the same way as in CI:
+
+```powershell
+.venv\Scripts\python.exe -m pylint server agents app.py tests
+.venv\Scripts\python.exe -m pytest -q tests --cov=server --cov=agents --cov-fail-under=80
+.venv\Scripts\python.exe -m bandit -r server agents app.py -ll
+.venv\Scripts\python.exe -m pip_audit -r requirements.txt
+```
+
+Pylint settings are in `.pylintrc`.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request. Jobs, in order:
+
+| Job | Checks |
+| --- | --- |
+| `structure` | Required files, `.env` ignored and not tracked, Vercel config, pinned dependencies, every agent folder has `config.py`, `agent.py` and `tests/agents/test_<name>.py`. |
+| `lint` | pylint on `server`, `agents`, `app.py` and `tests`. |
+| `unit-test` | pytest with coverage of at least 80%. Uploads the JUnit and coverage reports. |
+| `security` | bandit on the application code, pip-audit on `requirements.txt`, gitleaks on the git history. |
+| `test-report` | Job summary table. |
+| `pipeline-success` | Fails if any required job did not succeed. |
+
 ## Deploy on Vercel
 
 The app is deployed as a Python function. Vercel finds `app.py` and the
