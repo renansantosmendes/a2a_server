@@ -71,7 +71,10 @@ def create_app(
         rpc_path = f"/{name}"
         card = build_agent_card(spec, f"{resolved_base_url}{rpc_path}")
         request_handler = DefaultRequestHandlerV2(
-            agent_executor=DeepAgentExecutor(spec.build(resolved_base_url)),
+            agent_executor=DeepAgentExecutor(
+                spec.build(resolved_base_url),
+                trace_name=spec.name,
+            ),
             task_store=InMemoryTaskStore(),
             agent_card=card,
         )

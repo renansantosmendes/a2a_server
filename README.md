@@ -41,9 +41,25 @@ a2a_server/
 | --- | --- | --- |
 | `OPENAI_API_KEY` | yes | Key used by the OpenAI models. Read from `.env` locally. |
 | `PUBLIC_BASE_URL` | no | Public base URL written into the agent cards and used by agent 2 to call agent 1. Defaults to `https://$VERCEL_URL` on Vercel and `http://127.0.0.1:8000` locally. |
+| `LANGFUSE_PUBLIC_KEY` | no | Public key of the Langfuse project. Tracing is enabled only when this and the secret key are set. |
+| `LANGFUSE_SECRET_KEY` | no | Secret key of the Langfuse project. |
+| `LANGFUSE_HOST` | no | Langfuse host, for example `https://cloud.langfuse.com`. |
 
 The `.env` file stays on your machine. On Vercel, set the variables in the
 project settings.
+
+## Tracing with Langfuse
+
+When the Langfuse keys are set, every agent run is sent to Langfuse with its
+LLM calls, tool calls and token usage. Each trace is named after the agent
+route (for example `agent1`) and carries the A2A task id in its metadata.
+
+- Without the keys, the agents run normally and no trace is sent.
+- The traces are flushed before each answer is returned, which matters on
+  Vercel because the function can stop right after responding.
+- Failures to send traces are logged and do not affect the answer.
+- The tracing code lives in `server/tracing.py`. The executor in
+  `server/executor.py` attaches the callbacks to each run.
 
 ## Run locally
 

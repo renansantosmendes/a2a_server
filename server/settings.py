@@ -11,6 +11,22 @@ ENV_PATH = PROJECT_ROOT / ".env"
 LOCAL_BASE_URL = "http://127.0.0.1:8000"
 
 
+def load_environment() -> None:
+    """Load the variables from the project ``.env`` file when it exists.
+
+    Variables already set in the process environment are not overwritten.
+
+    Returns
+    -------
+    None
+
+    Example
+    -------
+    >>> load_environment()
+    """
+    load_dotenv(ENV_PATH)
+
+
 def get_public_base_url() -> str:
     """Return the public base URL used in the agent cards.
 
@@ -30,7 +46,7 @@ def get_public_base_url() -> str:
     >>> get_public_base_url()
     'http://127.0.0.1:8000'
     """
-    load_dotenv(ENV_PATH)
+    load_environment()
     explicit_url = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
     if explicit_url:
         return explicit_url

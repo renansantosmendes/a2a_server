@@ -13,6 +13,8 @@ from a2a.server.agent_execution.context import RequestContext
 from a2a.server.events.event_queue_v2 import EventQueue
 from a2a.server.tasks.task_updater import TaskUpdater
 
+from server.tracing import build_tracing_callbacks, flush_traces
+
 EMPTY_MESSAGE = "A mensagem recebida nao contem texto."
 FAILURE_MESSAGE = "Nao foi possivel gerar a resposta no momento."
 logger = logging.getLogger(__name__)
@@ -25,25 +27,34 @@ class DeepAgentExecutor(AgentExecutor):
     ----------
     agent : Any
         Compiled deep agent that accepts a ``messages`` input.
+    trace_name : str
+        Name of the run shown in Langfuse.
 
     Example
     -------
-    >>> executor = DeepAgentExecutor(agent)
+    >>> executor = DeepAgentExecutor(agent, trace_name="agent1")
     """
 
-    def __init__(self, agent: Any) -> None:
-        """Store the deep agent used to answer requests.
+    def __init__(
+        self,
+        agent: Any,
+        trace_name: str,
+    ) -> None:
+        """Store the deep agent and the name used for its traces.
 
         Parameters
         ----------
         agent : Any
             Compiled deep agent that accepts a ``messages`` input.
+        trace_name : str
+            Name of the run shown in Langfuse.
 
         Returns
         -------
         None
         """
         self._agent = agent
+        self._trace_name = trace_name
 
     async def execute(
         self,
@@ -79,7 +90,7 @@ class DeepAgentExecutor(AgentExecutor):
             return
 
         try:
-            answer = await self._run_agent(question)
+            answer = await self._run_agent(question, context.task_id)
         except Exception:
             logger.exception(
                 "Task %s failed while running the agent.",
@@ -118,20 +129,38 @@ class DeepAgentExecutor(AgentExecutor):
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         await updater.cancel()
 
-    async def _run_agent(self, question: str) -> str:
-        """Invoke the deep agent with a single user question.
+    async def _run_agent(
+        self,
+        question: str,
+        task_id: str,
+    ) -> str:
+        """Invoke the deep agent with a single question and trace the run.
+
+        The Langfuse callbacks are attached only when the keys are set. The
+        traces are flushed after the run, whether it succeeds or fails.
 
         Parameters
         ----------
         question : str
             Text of the user question.
+        task_id : str
+            A2A task id, stored as metadata of the trace.
 
         Returns
         -------
         str
             Content of the last message produced by the agent.
         """
-        result = await self._agent.ainvoke(
-            {"messages": [{"role": "user", "content": question}]}
-        )
+        config = {
+            "callbacks": build_tracing_callbacks(),
+            "run_name": self._trace_name,
+            "metadata": {"task_id": task_id},
+        }
+        try:
+            result = await self._agent.ainvoke(
+                {"messages": [{"role": "user", "content": question}]},
+                config=config,
+            )
+        finally:
+            flush_traces()
         return str(result["messages"][-1].content)

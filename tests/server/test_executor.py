@@ -3,6 +3,9 @@
 import asyncio
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import MagicMock
+
+import pytest
 
 from a2a.helpers.proto_helpers import new_message, new_text_part
 from a2a.types.a2a_pb2 import (
@@ -86,14 +89,21 @@ class FakeDeepAgent:
         self._answer = answer
         self._should_fail = should_fail
         self.received_messages = []
+        self.received_config = None
 
-    async def ainvoke(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def ainvoke(
+        self,
+        payload: dict[str, Any],
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
         """Return the fixed answer as the last message.
 
         Parameters
         ----------
         payload : dict[str, Any]
             Input with the ``messages`` list.
+        config : dict[str, Any]
+            Run configuration, stored for the tracing assertions.
 
         Returns
         -------
@@ -106,6 +116,7 @@ class FakeDeepAgent:
             When the fake agent was built to fail.
         """
         self.received_messages = payload["messages"]
+        self.received_config = config
         if self._should_fail:
             raise RuntimeError("model unavailable")
         return {"messages": [SimpleNamespace(content=self._answer)]}
@@ -154,7 +165,7 @@ def run_execute(
     FakeEventQueue
         Queue holding the events published during the run.
     """
-    executor = DeepAgentExecutor(agent)
+    executor = DeepAgentExecutor(agent, trace_name="test-agent")
     queue = FakeEventQueue()
     asyncio.run(executor.execute(make_context(text), queue))
     return queue
@@ -235,3 +246,34 @@ def test_execute_reports_failure_when_agent_raises() -> None:
 
     assert status_messages(queue) == [FAILURE_MESSAGE]
     assert not artifact_texts(queue)
+
+
+def test_execute_sends_trace_name_task_and_callbacks_to_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pass the trace name, task id and tracing callbacks to the agent."""
+    callbacks = ["fake-handler"]
+    monkeypatch.setattr(
+        "server.executor.build_tracing_callbacks",
+        lambda: callbacks,
+    )
+    agent = FakeDeepAgent("ok", should_fail=False)
+
+    run_execute(agent, "Oi")
+
+    assert agent.received_config["run_name"] == "test-agent"
+    assert agent.received_config["metadata"] == {"task_id": "task-1"}
+    assert agent.received_config["callbacks"] == callbacks
+
+
+def test_execute_flushes_traces_after_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Flush the traces once, even when the agent fails."""
+    flush_mock = MagicMock()
+    monkeypatch.setattr("server.executor.flush_traces", flush_mock)
+
+    run_execute(FakeDeepAgent("ok", should_fail=False), "Oi")
+    run_execute(FakeDeepAgent("ok", should_fail=True), "Oi")
+
+    assert flush_mock.call_count == 2
