@@ -81,5 +81,8 @@ def test_create_app_serves_only_the_folders_given(tmp_path: Path) -> None:
     app = create_app(base_url=BASE_URL, agents_dir=target)
     local_client = TestClient(app)
 
-    assert local_client.get("/agent1/.well-known/agent-card.json").status_code == 200
-    assert local_client.get("/agent2/.well-known/agent-card.json").status_code == 404
+    agent1_card = local_client.get("/agent1/.well-known/agent-card.json")
+    agent2_card = local_client.get("/agent2/.well-known/agent-card.json")
+
+    assert agent1_card.status_code == 200
+    assert agent2_card.status_code == 404

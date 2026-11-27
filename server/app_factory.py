@@ -1,5 +1,6 @@
 """Builds the Starlette application that serves every agent."""
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from a2a.server.request_handlers.default_request_handler_v2 import (
@@ -53,7 +54,7 @@ def create_app(
     """
     resolved_base_url = base_url or get_public_base_url()
     agent_names = discover_agent_names(agents_dir)
-    routes: list[Route] = [Route("/", endpoint=_build_index(agent_names))]
+    routes = [Route("/", endpoint=_build_index(agent_names))]
 
     for name in agent_names:
         spec = load_agent_spec(name)
@@ -77,7 +78,9 @@ def create_app(
     return Starlette(routes=routes)
 
 
-def _build_index(agent_names: list[str]):
+def _build_index(
+    agent_names: list[str],
+) -> Callable[[Request], Awaitable[JSONResponse]]:
     """Create the endpoint that lists the available agents.
 
     Parameters
@@ -87,7 +90,7 @@ def _build_index(agent_names: list[str]):
 
     Returns
     -------
-    Callable
+    Callable[[Request], Awaitable[JSONResponse]]
         Starlette endpoint returning a JSON document with the agent routes.
     """
 

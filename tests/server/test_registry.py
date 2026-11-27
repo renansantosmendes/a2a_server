@@ -11,7 +11,10 @@ from server.registry import (
 )
 
 
-def make_agent_folder(root: Path, name: str) -> None:
+def make_agent_folder(
+    root: Path,
+    name: str,
+) -> None:
     """Create a minimal agent folder with config.py and agent.py.
 
     Parameters

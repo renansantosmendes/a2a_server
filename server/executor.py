@@ -1,5 +1,6 @@
 """AgentExecutor that runs each A2A request through a deep agent."""
 
+import logging
 from typing import Any
 
 from a2a.helpers.proto_helpers import (
@@ -14,6 +15,7 @@ from a2a.server.tasks.task_updater import TaskUpdater
 
 EMPTY_MESSAGE = "A mensagem recebida nao contem texto."
 FAILURE_MESSAGE = "Nao foi possivel gerar a resposta no momento."
+logger = logging.getLogger(__name__)
 
 
 class DeepAgentExecutor(AgentExecutor):
@@ -70,6 +72,7 @@ class DeepAgentExecutor(AgentExecutor):
         await updater.start_work()
 
         if not question:
+            logger.info("Task %s rejected: empty message.", context.task_id)
             await updater.failed(
                 updater.new_agent_message([new_text_part(EMPTY_MESSAGE)])
             )
@@ -78,6 +81,10 @@ class DeepAgentExecutor(AgentExecutor):
         try:
             answer = await self._run_agent(question)
         except Exception:
+            logger.exception(
+                "Task %s failed while running the agent.",
+                context.task_id,
+            )
             await updater.failed(
                 updater.new_agent_message([new_text_part(FAILURE_MESSAGE)])
             )
@@ -88,6 +95,7 @@ class DeepAgentExecutor(AgentExecutor):
             name="answer",
         )
         await updater.complete()
+        logger.info("Task %s completed.", context.task_id)
 
     async def cancel(
         self,

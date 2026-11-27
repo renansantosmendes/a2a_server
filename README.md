@@ -26,8 +26,7 @@ a2a_server/
     agent1/  config.py, agent.py
     agent2/  config.py, agent.py
   server/                generic code: registry, app factory, executor, A2A client
-  tests/                 pytest suite
-  demo/                  earlier two-server demo on ports 9101 and 9102 (independent)
+  tests/                 pytest suite, mirrors server/ and agents/
   vercel.json            maxDuration for app.py
   .python-version        Python 3.13 for Vercel
   .vercelignore          files not sent to Vercel

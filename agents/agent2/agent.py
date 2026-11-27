@@ -10,6 +10,7 @@ from agents.agent2.config import (
     MODEL_NAME,
     SYSTEM_PROMPT,
     TARGET_AGENT_NAME,
+    TEMPERATURE,
 )
 from server.a2a_client import ask_agent
 
@@ -75,7 +76,7 @@ def build_agent(base_url: str) -> Any:
     >>> agent = build_agent("http://127.0.0.1:8000")
     """
     return create_deep_agent(
-        model=ChatOpenAI(model=MODEL_NAME, temperature=0),
+        model=ChatOpenAI(model=MODEL_NAME, temperature=TEMPERATURE),
         tools=build_tools(base_url),
         system_prompt=SYSTEM_PROMPT,
     )

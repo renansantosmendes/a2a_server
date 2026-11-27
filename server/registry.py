@@ -40,7 +40,8 @@ class AgentSpec:
 
     Example
     -------
-    >>> spec = AgentSpec("agent1", "Agent 1", "Answers", "answer", "A", "S", build)
+    >>> load_agent_spec("agent1").skill_id
+    'answer'
     """
 
     name: str

@@ -11,7 +11,10 @@ from a2a.utils.constants import PROTOCOL_VERSION_1_0
 from server.registry import AgentSpec
 
 
-def build_agent_card(spec: AgentSpec, rpc_url: str) -> AgentCard:
+def build_agent_card(
+    spec: AgentSpec,
+    rpc_url: str,
+) -> AgentCard:
     """Create the AgentCard of one agent.
 
     Parameters

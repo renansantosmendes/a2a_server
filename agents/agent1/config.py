@@ -6,6 +6,7 @@ SKILL_ID = "answer"
 SKILL_NAME = "Answer questions"
 SKILL_DESCRIPTION = "Answers general questions in Portuguese."
 MODEL_NAME = "gpt-4o-mini"
+TEMPERATURE = 0
 SYSTEM_PROMPT = (
     "Voce e o Agente 1. Responda as perguntas em portugues, de forma "
     "clara e objetiva."

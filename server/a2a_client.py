@@ -9,7 +9,10 @@ from a2a.types.a2a_pb2 import Role, SendMessageRequest
 REQUEST_TIMEOUT_SECONDS = 180.0
 
 
-async def ask_agent(agent_url: str, question: str) -> str:
+async def ask_agent(
+    agent_url: str,
+    question: str,
+) -> str:
     """Send a question to another A2A agent and return its answer.
 
     Parameters
@@ -40,9 +43,12 @@ async def ask_agent(agent_url: str, question: str) -> str:
                 role=Role.ROLE_USER,
             ),
         )
-        responses = [
-            response async for response in client.send_message(request)
-        ]
+        try:
+            responses = [
+                response async for response in client.send_message(request)
+            ]
+        finally:
+            await client.close()
     for response in responses:
         if response.HasField("task"):
             return "".join(

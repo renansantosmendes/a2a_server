@@ -33,8 +33,9 @@ Required constants (the server fails at startup when one is missing):
 | `SKILL_NAME` | Display name of the skill. |
 | `SKILL_DESCRIPTION` | What the skill answers. |
 
-Other constants (model name, system prompt, target agents) are free. Keep
-them here, not in `agent.py`.
+Other constants (model name, `TEMPERATURE`, system prompt, target agents)
+are free. Keep them here, not in `agent.py`, so the hyperparameters of each
+run are recorded in one place.
 
 ### `agent.py`
 
