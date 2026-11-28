@@ -33,6 +33,10 @@ Required constants (the server fails at startup when one is missing):
 | `SKILL_NAME` | Display name of the skill. |
 | `SKILL_DESCRIPTION` | What the skill answers. |
 
+`ALLOWED_ROLES` (optional, default `("student", "professor")`) lists the roles
+that may call the agent. Each role comes from the `pgl_auth_server` token
+verification. Requests from other roles get 403.
+
 Other constants (model name, `TEMPERATURE`, system prompt, target agents)
 are free. Keep them here, not in `agent.py`, so the hyperparameters of each
 run are recorded in one place.

@@ -4,7 +4,7 @@ import importlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Tuple
 
 AGENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 REQUIRED_CONFIG_FIELDS = (
@@ -14,6 +14,7 @@ REQUIRED_CONFIG_FIELDS = (
     "SKILL_NAME",
     "SKILL_DESCRIPTION",
 )
+DEFAULT_ALLOWED_ROLES = ("student", "professor")
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,9 @@ class AgentSpec:
     build : Callable[[str], Any]
         Function that receives the public base URL and returns the
         compiled agent.
+    allowed_roles : tuple[str, ...]
+        Roles allowed to send messages to the agent, taken from the
+        ``ALLOWED_ROLES`` constant of ``config.py``.
 
     Example
     -------
@@ -51,6 +55,7 @@ class AgentSpec:
     skill_name: str
     skill_description: str
     build: Callable[[str], Any]
+    allowed_roles: Tuple[str, ...] = DEFAULT_ALLOWED_ROLES
 
 
 def is_valid_agent_name(name: str) -> bool:
@@ -154,4 +159,7 @@ def load_agent_spec(name: str) -> AgentSpec:
         skill_name=config.SKILL_NAME,
         skill_description=config.SKILL_DESCRIPTION,
         build=build_agent,
+        allowed_roles=tuple(
+            getattr(config, "ALLOWED_ROLES", DEFAULT_ALLOWED_ROLES)
+        ),
     )

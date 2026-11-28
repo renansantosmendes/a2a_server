@@ -9,6 +9,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 AGENTS_DIR = PROJECT_ROOT / "agents"
 ENV_PATH = PROJECT_ROOT / ".env"
 LOCAL_BASE_URL = "http://127.0.0.1:8000"
+AUTH_SERVICE_URL_VARIABLE = "PGL_AUTH_BASE_URL"
+DEFAULT_AUTH_SERVICE_URL = "https://pgl-auth-server.vercel.app"
 
 
 def load_environment() -> None:
@@ -54,3 +56,24 @@ def get_public_base_url() -> str:
     if vercel_host:
         return f"https://{vercel_host}"
     return LOCAL_BASE_URL
+
+
+def get_auth_service_url() -> str:
+    """Return the base URL of pgl_auth_server used to verify tokens.
+
+    The value is taken from ``PGL_AUTH_BASE_URL`` when set, otherwise the
+    public deployment is used.
+
+    Returns
+    -------
+    str
+        Base URL without a trailing slash.
+
+    Example
+    -------
+    >>> get_auth_service_url()
+    'https://pgl-auth-server.vercel.app'
+    """
+    load_environment()
+    configured = os.getenv(AUTH_SERVICE_URL_VARIABLE, "").strip().rstrip("/")
+    return configured or DEFAULT_AUTH_SERVICE_URL
