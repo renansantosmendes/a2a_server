@@ -3,7 +3,8 @@
 from pathlib import Path
 
 import pytest
-from starlette.testclient import TestClient
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from server.app_factory import create_app
 
@@ -46,9 +47,9 @@ def test_index_lists_every_agent_folder(client: TestClient) -> None:
     assert names == ["agent1", "agent2"]
 
 
-def test_docs_page_documents_every_agent(client: TestClient) -> None:
-    """Render an HTML page with the card, endpoint and example per agent."""
-    response = client.get("/docs")
+def test_guide_page_documents_every_agent(client: TestClient) -> None:
+    """Render an HTML guide with the card, endpoint and example per agent."""
+    response = client.get("/guide")
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
@@ -57,6 +58,31 @@ def test_docs_page_documents_every_agent(client: TestClient) -> None:
     assert f"POST {BASE_URL}/agent2" in page
     assert "SendMessage" in page
     assert "A2A-Version: 1.0" in page
+
+
+def test_interactive_docs_are_served_by_fastapi(client: TestClient) -> None:
+    """Serve the FastAPI Swagger UI at /docs."""
+    response = client.get("/docs")
+
+    assert response.status_code == 200
+    assert "swagger" in response.text.lower()
+
+
+def test_openapi_schema_describes_the_index_and_the_guide(
+    client: TestClient,
+) -> None:
+    """Expose the index and the guide in the generated OpenAPI schema."""
+    paths = client.get("/openapi.json").json()["paths"]
+
+    assert "/" in paths
+    assert "/guide" in paths
+
+
+def test_create_app_returns_a_fastapi_application() -> None:
+    """Build a FastAPI instance, not a bare Starlette one."""
+    app = create_app(base_url=BASE_URL)
+
+    assert isinstance(app, FastAPI)
 
 
 def test_agent_card_is_served_under_the_agent_route(

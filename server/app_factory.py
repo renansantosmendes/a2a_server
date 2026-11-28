@@ -1,7 +1,6 @@
-"""Builds the Starlette application that serves every agent."""
+"""Builds the FastAPI application that serves every agent."""
 
 import html
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from a2a.server.request_handlers.default_request_handler_v2 import (
@@ -10,17 +9,18 @@ from a2a.server.request_handlers.default_request_handler_v2 import (
 from a2a.server.routes.agent_card_routes import create_agent_card_routes
 from a2a.server.routes.jsonrpc_routes import create_jsonrpc_routes
 from a2a.server.tasks.inmemory_task_store import InMemoryTaskStore
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse
-from starlette.routing import Route
+from fastapi import APIRouter, FastAPI
+from fastapi.responses import HTMLResponse
 
 from server.agent_card import build_agent_card
 from server.executor import DeepAgentExecutor
 from server.registry import AgentSpec, discover_agent_names, load_agent_spec
+from server.schemas import AgentIndex, AgentRoute
 from server.settings import AGENTS_DIR, get_public_base_url
 
 AGENT_CARD_PATH = ".well-known/agent-card.json"
+GUIDE_PATH = "/guide"
+APP_TITLE = "A2A agents server"
 EXAMPLE_REQUEST_BODY = (
     '{"jsonrpc":"2.0","id":1,"method":"SendMessage","params":'
     '{"message":{"messageId":"msg-1","role":"ROLE_USER",'
@@ -31,7 +31,7 @@ EXAMPLE_REQUEST_BODY = (
 def create_app(
     base_url: str | None = None,
     agents_dir: Path = AGENTS_DIR,
-) -> Starlette:
+) -> FastAPI:
     """Build the application with one route group per agent folder.
 
     For each agent folder ``<name>``, the application serves:
@@ -39,9 +39,9 @@ def create_app(
     - ``POST /<name>``: JSON-RPC endpoint of the A2A protocol.
     - ``GET /<name>/.well-known/agent-card.json``: the agent card.
 
-    The index ``GET /`` lists the available agents as JSON, and
-    ``GET /docs`` shows a human readable page with the endpoints and an
-    example request for each agent.
+    The application also serves ``GET /`` (JSON index of the agents),
+    ``GET /guide`` (human readable page with an example request for each
+    agent) and the interactive API documentation of FastAPI at ``/docs``.
 
     Parameters
     ----------
@@ -53,97 +53,28 @@ def create_app(
 
     Returns
     -------
-    Starlette
+    FastAPI
         Application ready to be served by uvicorn or by Vercel.
 
     Example
     -------
-    >>> app = create_app(base_url="http://127.0.0.1:8000")
+    >>> app = create_app(base_url="http://127.0.0.1:8000")  # doctest: +SKIP
     """
     resolved_base_url = base_url or get_public_base_url()
     agent_names = discover_agent_names(agents_dir)
-    routes = [Route("/", endpoint=_build_index(agent_names))]
-    specs = []
-
-    for name in agent_names:
-        spec = load_agent_spec(name)
-        specs.append(spec)
-        rpc_path = f"/{name}"
-        card = build_agent_card(spec, f"{resolved_base_url}{rpc_path}")
-        request_handler = DefaultRequestHandlerV2(
-            agent_executor=DeepAgentExecutor(
-                spec.build(resolved_base_url),
-                trace_name=spec.name,
-            ),
-            task_store=InMemoryTaskStore(),
-            agent_card=card,
-        )
-        routes.extend(
-            create_agent_card_routes(
-                card,
-                card_url=f"{rpc_path}/{AGENT_CARD_PATH}",
-            )
-        )
-        routes.extend(
-            create_jsonrpc_routes(request_handler, rpc_url=rpc_path)
-        )
-
-    routes.append(
-        Route("/docs", endpoint=_build_docs_page(specs, resolved_base_url))
-    )
-    return Starlette(routes=routes)
+    specs = [load_agent_spec(name) for name in agent_names]
+    app = FastAPI(title=APP_TITLE)
+    app.include_router(_build_pages_router(specs, resolved_base_url))
+    for spec in specs:
+        _mount_agent(app, spec, resolved_base_url)
+    return app
 
 
-def _build_index(
-    agent_names: list[str],
-) -> Callable[[Request], Awaitable[JSONResponse]]:
-    """Create the endpoint that lists the available agents.
-
-    Parameters
-    ----------
-    agent_names : list[str]
-        Route names of the agents served by the application.
-
-    Returns
-    -------
-    Callable[[Request], Awaitable[JSONResponse]]
-        Starlette endpoint returning a JSON document with the agent routes.
-    """
-
-    async def index(request: Request) -> JSONResponse:
-        """Return the list of agent routes as JSON.
-
-        Parameters
-        ----------
-        request : Request
-            Incoming HTTP request. Not used.
-
-        Returns
-        -------
-        JSONResponse
-            Document with the agent names and their card paths.
-        """
-        return JSONResponse(
-            {
-                "agents": [
-                    {
-                        "name": name,
-                        "rpc": f"/{name}",
-                        "agent_card": f"/{name}/{AGENT_CARD_PATH}",
-                    }
-                    for name in agent_names
-                ]
-            }
-        )
-
-    return index
-
-
-def _build_docs_page(
+def _build_pages_router(
     specs: list[AgentSpec],
     base_url: str,
-) -> Callable[[Request], Awaitable[HTMLResponse]]:
-    """Create the endpoint that renders the documentation page.
+) -> APIRouter:
+    """Create the router with the index and the guide page.
 
     Parameters
     ----------
@@ -154,33 +85,91 @@ def _build_docs_page(
 
     Returns
     -------
-    Callable[[Request], Awaitable[HTMLResponse]]
-        Starlette endpoint returning the HTML documentation page.
+    APIRouter
+        Router with ``GET /`` and ``GET /guide``.
     """
+    router = APIRouter()
 
-    async def docs(request: Request) -> HTMLResponse:
-        """Return the HTML documentation page.
+    @router.get("/", response_model=AgentIndex, tags=["agents"])
+    def list_agents() -> AgentIndex:
+        """List the agents served by the application and their routes.
 
-        Parameters
-        ----------
-        request : Request
-            Incoming HTTP request. Not used.
+        Returns
+        -------
+        AgentIndex
+            One entry per agent with its JSON-RPC and card paths.
+        """
+        return AgentIndex(
+            agents=[
+                AgentRoute(
+                    name=spec.name,
+                    rpc=f"/{spec.name}",
+                    agent_card=f"/{spec.name}/{AGENT_CARD_PATH}",
+                )
+                for spec in specs
+            ]
+        )
+
+    @router.get(GUIDE_PATH, response_class=HTMLResponse, tags=["agents"])
+    def agents_guide() -> HTMLResponse:
+        """Render the human readable guide with an example for each agent.
 
         Returns
         -------
         HTMLResponse
-            Page describing every agent endpoint.
+            Page describing the endpoints, skills and example requests.
         """
-        return HTMLResponse(_render_docs_html(specs, base_url))
+        return HTMLResponse(_render_guide_html(specs, base_url))
 
-    return docs
+    return router
 
 
-def _render_docs_html(
+def _mount_agent(
+    app: FastAPI,
+    spec: AgentSpec,
+    base_url: str,
+) -> None:
+    """Attach the A2A routes of one agent to the application.
+
+    Parameters
+    ----------
+    app : FastAPI
+        Application that receives the routes.
+    spec : AgentSpec
+        Specification of the agent to publish.
+    base_url : str
+        Public base URL written into the agent card.
+
+    Returns
+    -------
+    None
+    """
+    rpc_path = f"/{spec.name}"
+    card = build_agent_card(spec, f"{base_url}{rpc_path}")
+    request_handler = DefaultRequestHandlerV2(
+        agent_executor=DeepAgentExecutor(
+            spec.build(base_url),
+            trace_name=spec.name,
+        ),
+        task_store=InMemoryTaskStore(),
+        agent_card=card,
+    )
+    app.router.routes.extend(
+        create_agent_card_routes(
+            card,
+            card_url=f"{rpc_path}/{AGENT_CARD_PATH}",
+        )
+    )
+    app.router.routes.extend(
+        create_jsonrpc_routes(request_handler, rpc_url=rpc_path)
+    )
+
+
+def _render_guide_html(
     specs: list[AgentSpec],
     base_url: str,
 ) -> str:
-    """Render the documentation page for all agents.
+    """Render the guide page for all agents.
 
     Parameters
     ----------
@@ -196,7 +185,7 @@ def _render_docs_html(
 
     Example
     -------
-    >>> page = _render_docs_html([], "http://127.0.0.1:8000")
+    >>> page = _render_guide_html([], "http://127.0.0.1:8000")
     """
     sections = "".join(_render_agent_section(spec, base_url) for spec in specs)
     return (
@@ -212,7 +201,8 @@ def _render_docs_html(
         "<p>Each agent is served over the A2A protocol (JSON-RPC 2.0). "
         "Send a <code>POST</code> with the <code>SendMessage</code> method "
         "to the agent endpoint, and read the agent card to discover its "
-        "skills.</p>"
+        "skills. The interactive API documentation is at "
+        "<a href=\"/docs\">/docs</a>.</p>"
         f"{sections}"
         "</body></html>"
     )
@@ -222,7 +212,7 @@ def _render_agent_section(
     spec: AgentSpec,
     base_url: str,
 ) -> str:
-    """Render the documentation block of one agent.
+    """Render the guide block of one agent.
 
     Parameters
     ----------
