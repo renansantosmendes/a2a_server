@@ -1,6 +1,7 @@
 """Builds the FastAPI application that serves every agent."""
 
 import html
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from a2a.server.request_handlers.default_request_handler_v2 import (
@@ -9,12 +10,20 @@ from a2a.server.request_handlers.default_request_handler_v2 import (
 from a2a.server.routes.agent_card_routes import create_agent_card_routes
 from a2a.server.routes.jsonrpc_routes import create_jsonrpc_routes
 from a2a.server.tasks.inmemory_task_store import InMemoryTaskStore
-from fastapi import APIRouter, FastAPI
-from fastapi.responses import HTMLResponse
+
+from fastapi import APIRouter, FastAPI, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from server.agent_card import build_agent_card
 from server.executor import DeepAgentExecutor
+from server.identity import (
+    IdentityServiceError,
+    IdentityVerifier,
+    TokenRejectedError,
+    read_bearer_token,
+)
 from server.registry import AgentSpec, discover_agent_names, load_agent_spec
+from server.request_context import BEARER_TOKEN_VAR
 from server.schemas import AgentIndex, AgentRoute
 from server.settings import AGENTS_DIR, get_public_base_url
 
@@ -31,13 +40,16 @@ EXAMPLE_REQUEST_BODY = (
 def create_app(
     base_url: str | None = None,
     agents_dir: Path = AGENTS_DIR,
+    identity_verifier: IdentityVerifier | None = None,
 ) -> FastAPI:
     """Build the application with one route group per agent folder.
 
     For each agent folder ``<name>``, the application serves:
 
-    - ``POST /<name>``: JSON-RPC endpoint of the A2A protocol.
-    - ``GET /<name>/.well-known/agent-card.json``: the agent card.
+    - ``POST /<name>``: JSON-RPC endpoint of the A2A protocol. It requires a
+      bearer token from pgl_auth_server whose role is allowed by the agent.
+    - ``GET /<name>/.well-known/agent-card.json``: the agent card, public,
+      which declares the bearer scheme.
 
     The application also serves ``GET /`` (JSON index of the agents),
     ``GET /guide`` (human readable page with an example request for each
@@ -50,6 +62,9 @@ def create_app(
         from the settings module.
     agents_dir : Path
         Folder that contains one sub-folder per agent.
+    identity_verifier : IdentityVerifier | None
+        Checker of the bearer tokens. When None, one that calls the
+        configured pgl_auth_server is created.
 
     Returns
     -------
@@ -61,13 +76,103 @@ def create_app(
     >>> app = create_app(base_url="http://127.0.0.1:8000")  # doctest: +SKIP
     """
     resolved_base_url = base_url or get_public_base_url()
+    verifier = identity_verifier or IdentityVerifier()
     agent_names = discover_agent_names(agents_dir)
     specs = [load_agent_spec(name) for name in agent_names]
     app = FastAPI(title=APP_TITLE)
     app.include_router(_build_pages_router(specs, resolved_base_url))
+    _install_authorization(app, specs, verifier)
     for spec in specs:
         _mount_agent(app, spec, resolved_base_url)
     return app
+
+
+def _install_authorization(
+    app: FastAPI,
+    specs: list[AgentSpec],
+    verifier: IdentityVerifier,
+) -> None:
+    """Require a valid token with an allowed role for each agent call.
+
+    The middleware checks only ``POST`` requests to an agent route. The
+    agent card and the index stay public. On success, the token is stored
+    in ``BEARER_TOKEN_VAR`` so that the agent can forward it.
+
+    Parameters
+    ----------
+    app : FastAPI
+        Application that receives the middleware.
+    specs : list[AgentSpec]
+        Agents served by the application, with their allowed roles.
+    verifier : IdentityVerifier
+        Checker used to confirm each token.
+
+    Returns
+    -------
+    None
+    """
+    rules = {f"/{spec.name}": spec.allowed_roles for spec in specs}
+
+    @app.middleware("http")
+    async def authorize_agent_calls(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        """Reject agent calls without a valid token and an allowed role.
+
+        Parameters
+        ----------
+        request : Request
+            Incoming HTTP request.
+        call_next : Callable[[Request], Awaitable[Response]]
+            Function that runs the rest of the application.
+
+        Returns
+        -------
+        Response
+            The response of the agent, or a 401, 403 or 503 error.
+        """
+        allowed_roles = rules.get(request.url.path)
+        if request.method != "POST" or allowed_roles is None:
+            return await call_next(request)
+
+        token = read_bearer_token(request.headers.get("authorization"))
+        if token is None:
+            return _error_response(401, "Token de acesso ausente.")
+        try:
+            identity = await verifier.verify(token)
+        except TokenRejectedError as error:
+            return _error_response(error.status_code, error.detail)
+        except IdentityServiceError:
+            return _error_response(
+                503,
+                "Serviço de autenticação indisponível. Tente novamente.",
+            )
+        if identity.role not in allowed_roles:
+            return _error_response(
+                403, "Seu perfil não tem acesso a este agente."
+            )
+
+        BEARER_TOKEN_VAR.set(token)
+        return await call_next(request)
+
+
+def _error_response(status_code: int, detail: str) -> JSONResponse:
+    """Build a JSON error response in the FastAPI style.
+
+    Parameters
+    ----------
+    status_code : int
+        HTTP status of the response.
+    detail : str
+        Message placed in the ``detail`` field.
+
+    Returns
+    -------
+    JSONResponse
+        Response with the given status and body.
+    """
+    return JSONResponse(status_code=status_code, content={"detail": detail})
 
 
 def _build_pages_router(

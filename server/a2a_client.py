@@ -6,6 +6,8 @@ from a2a.client.client_factory import create_client
 from a2a.helpers.proto_helpers import new_message, new_text_part
 from a2a.types.a2a_pb2 import Role, SendMessageRequest
 
+from server.request_context import forwarded_headers
+
 REQUEST_TIMEOUT_SECONDS = 180.0
 
 
@@ -32,7 +34,10 @@ async def ask_agent(
     -------
     >>> answer = await ask_agent("http://127.0.0.1:8000/agent1", "Oi")
     """
-    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as http:
+    async with httpx.AsyncClient(
+        timeout=REQUEST_TIMEOUT_SECONDS,
+        headers=forwarded_headers(),
+    ) as http:
         client = await create_client(
             agent_url,
             client_config=ClientConfig(streaming=False, httpx_client=http),
